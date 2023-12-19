@@ -78,8 +78,8 @@ def EM_multinomial(dataset, num_iterations):
                                 
                 C_mat[k][j] = sum_numerator / sum_denominator
 
-    # return inside list to match dtype of other EM functions
-    C_mats = [C_mat]
+    # return inside dict to match dtype of other EM functions
+    C_mats = {' ': C_mat}
     return C_mats
 
 

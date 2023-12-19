@@ -12,7 +12,7 @@ def load_data(cleanup=False):
     # read in the data
     # comments = pd.read_csv('wiki_aggression/aggression_annotated_comments.tsv',  sep = '\t')
     if cleanup:
-        annotations = pd.read_csv('wiki_aggression/aggression_annotations.tsv',  sep = '\t')
+        annotations = pd.read_csv('F:/msc/y2/hitl/project/wiki_aggression/aggression_annotations.tsv', sep='\t')
         # demographics = pd.read_csv('wiki_aggression/aggression_worker_demographics.tsv',  sep = '\t')
 
         # remove newline and tab tokens
@@ -65,6 +65,83 @@ def load_data(cleanup=False):
 
 
     return train, test
+
+
+def handle_sparsity(shrinkage_ratio=100, no_anots = 10):
+    annotations = pd.read_csv('F:/msc/y2/hitl/project/wiki_aggression/aggression_annotations.tsv', sep='\t')
+    reviews = annotations['rev_id'].unique().tolist()
+    all_worker_ids = annotations['worker_id'].unique().tolist()
+
+    # create dict of reviews by each annotator
+    reviews_by_annot = {}
+    for annotator in tqdm(all_worker_ids):
+        submitted_reviews = set(annotations[annotations['worker_id'] == annotator]['rev_id'].unique())
+        reviews_by_annot[annotator] = submitted_reviews
+
+    # sort annotators by number of reviews submitted
+    best_annotators = sorted(reviews_by_annot, key=lambda key: len(reviews_by_annot[key]))
+    # start with all reviews annotated by the best annotator. store review ids
+    picked_reviews = set(reviews_by_annot[best_annotators[0]])
+    # store worker ids
+    picked_annots = all_worker_ids
+
+    # iterate through annotators to create non-sparse dataset. end condition is going below selected number of annotators.
+    for annot in tqdm(best_annotators[1:]):
+        if len(picked_annots) < no_anots:
+            break
+        # get reviews annotated by current annotator
+        annot_reviews = reviews_by_annot[annot]
+        # get reviews annotated by previous annotators but not by current annotator
+        currently_unavailable = picked_reviews.difference(annot_reviews)
+        # decide whether to drop some datapoints or skip this annotator
+        if len(currently_unavailable) < picked_reviews/shrinkage_ratio:
+            # drop some datapoints
+            picked_reviews = picked_reviews.intersection(annot_reviews)
+        else:
+            # skip this annotator
+            picked_annots.remove(annot)
+
+    print("finished parsing data, removing reviews from deleted annotators..")
+    # Select datapoints with reviews from remaining worker_ids
+    selected_annotations = annotations[annotations['worker_id'].isin(picked_annots)]
+    dense_reviews = selected_annotations[selected_annotations['rev_id'].isin(picked_reviews)]
+
+    return dense_reviews
+
+
+def generate_labels(annotations):
+    reviews = annotations['rev_id'].unique().tolist()
+    annotators = annotations['worker_id'].unique().tolist()
+
+    #TODO figure out how to initialize dataframe
+    labeled_dataframe = pd.DataFrame()
+    
+    # train DS on whole dataset to generate labels
+    DS_mats = noisy_annotators.EM_Skeene(annotations)
+
+    # add labels to dataset
+    for review in reviews:
+
+        # majority voting
+        num_annotations = len(annotations[annotations['rev_id']==review])
+        num_true = len(annotations[(annotations['aggression']==1) & (annotations['rev_id']==review)])
+        num_true /= num_annotations
+        maj_voting = 1 if num_true >= 0.5 else 0
+        # TODO add column to dataframe
+
+        # DS sampling
+        for annotator in annotators:
+            # make sure datapoint exists
+            if len(annotations[(annotations['worker_id']==annotator) & (annotations['rev_id']==review)]) > 0:
+                # get matrix
+                C_mat = DS_mats[annotator]
+                label = 1 if C_mat[0][0] < C_mat[1][1] else 0
+                # TODO add column to dataframe
+    
+    return labeled_dataframe
+
+
+
 
 # demographic can be 'all', or set of {'none', 'some', 'hs', 'bachelors', 'masters', 'doctorate', 'professional'}
 def run_experiment(num_annotators=5, num_iterations=3, demographic_type='all', algorithm='multi'):
