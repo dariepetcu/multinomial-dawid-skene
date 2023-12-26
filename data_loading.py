@@ -19,55 +19,23 @@ def load_data(cleanup=False):
         # comments['comment'] = comments['comment'].apply(lambda x: x.replace("NEWLINE_TOKEN", " "))
         # comments['comment'] = comments['comment'].apply(lambda x: x.replace("TAB_TOKEN", " "))
 
-        # save datapoints with non-sparse annotations
-        # start with list of all annotators
-        all_worker_ids = annotations['worker_id'].unique().tolist()
-        checked_ids = []
-        min_annot = 7
-        
-        # Iterate through each rev_id
-        print("Finding datapoints with reviews from all workers...")
-        for rev_id in tqdm(annotations['rev_id'].unique()):
-            end=False
-            # Get worker_ids for the current rev_id
-            rev_worker_ids = annotations[annotations['rev_id'] == rev_id]['worker_id'].unique().tolist()
-
-            # Update the list of worker_ids by keeping only those present in rev_worker_ids
-            for worker_id in all_worker_ids:
-                if worker_id not in rev_worker_ids:
-                    all_worker_ids.remove(worker_id)
-            new_all_workers = [worker_id for worker_id in all_worker_ids if worker_id in rev_worker_ids]
-
-            if new_all_workers:
-                checked_ids.append(rev_id)
-                all_worker_ids = new_all_workers
-
-            # save on last iteration
-            if annotations['rev_id'].unique()[-1] == rev_id:
-                end = True
-
-            if end:
-                break
-
-
-        # Select datapoints with reviews from remaining worker_ids
-        selected_datapoints = annotations[annotations['rev_id'].isin(checked_ids)]
+        # keep clean subset of available data
+        selected_datapoints = handle_sparsity()      
         # Concatenate selected datapoints to the new DataFrame
         print("Saving datapoints with reviews from all workers...")
-        selected_datapoints.to_csv('filtered_datapoints.csv', index=False)
-
+        selected_datapoints.to_csv('non_sparse.csv', index=False)
     else:
-        selected_datapoints = pd.read_csv('filtered_datapoints.csv')
+        selected_datapoints = pd.read_csv('non_sparse.csv')
+
+    generate_labels(selected_datapoints)
 
     # create test and train splits
     train, test = train_test_split(selected_datapoints, test_size=0.2, random_state=76)
-    # selected_datapoints['split'] = selected_datapoints['rev_id'].apply(lambda x: 'train' if x % 5 != 0 else 'test')
-
 
     return train, test
 
 
-def handle_sparsity(shrinkage_ratio=100, no_anots = 10):
+def handle_sparsity(no_anots = 7):
     annotations = pd.read_csv('F:/msc/y2/hitl/project/wiki_aggression/aggression_annotations.tsv', sep='\t')
     reviews = annotations['rev_id'].unique().tolist()
     all_worker_ids = annotations['worker_id'].unique().tolist()
@@ -82,24 +50,36 @@ def handle_sparsity(shrinkage_ratio=100, no_anots = 10):
     best_annotators = sorted(reviews_by_annot, key=lambda key: len(reviews_by_annot[key]))
     # start with all reviews annotated by the best annotator. store review ids
     picked_reviews = set(reviews_by_annot[best_annotators[0]])
-    # store worker ids
-    picked_annots = all_worker_ids
 
-    # iterate through annotators to create non-sparse dataset. end condition is going below selected number of annotators.
-    for annot in tqdm(best_annotators[1:]):
-        if len(picked_annots) < no_anots:
-            break
-        # get reviews annotated by current annotator
-        annot_reviews = reviews_by_annot[annot]
-        # get reviews annotated by previous annotators but not by current annotator
-        currently_unavailable = picked_reviews.difference(annot_reviews)
-        # decide whether to drop some datapoints or skip this annotator
-        if len(currently_unavailable) < picked_reviews/shrinkage_ratio:
-            # drop some datapoints
-            picked_reviews = picked_reviews.intersection(annot_reviews)
-        else:
-            # skip this annotator
-            picked_annots.remove(annot)
+    # keep best 7 annotators
+    picked_annots = best_annotators[:no_anots]
+    for rev in tqdm(picked_reviews):
+        for annot in picked_annots:
+            # remove datapoint if one of top 7 annotators did not annotate it
+            if rev not in reviews_by_annot[annot]:
+                picked_reviews.remove(rev)
+                # stop checking current datapoint
+                break
+
+
+    # store worker ids
+    # picked_annots = all_worker_ids
+
+    # # iterate through annotators to create non-sparse dataset. end condition is going below selected number of annotators.
+    # for annot in tqdm(best_annotators[1:]):
+    #     if len(picked_annots) < no_anots:
+    #         break
+    #     # get reviews annotated by current annotator
+    #     annot_reviews = reviews_by_annot[annot]
+    #     # get reviews annotated by previous annotators but not by current annotator
+    #     currently_unavailable = picked_reviews.difference(annot_reviews)
+    #     # decide whether to drop some datapoints or skip this annotator
+    #     if len(currently_unavailable) < picked_reviews/shrinkage_ratio:
+    #         # drop some datapoints
+    #         picked_reviews = picked_reviews.intersection(annot_reviews)
+    #     else:
+    #         # skip this annotator
+    #         picked_annots.remove(annot)
 
     print("finished parsing data, removing reviews from deleted annotators..")
     # Select datapoints with reviews from remaining worker_ids
@@ -113,8 +93,10 @@ def generate_labels(annotations):
     reviews = annotations['rev_id'].unique().tolist()
     annotators = annotations['worker_id'].unique().tolist()
 
-    #TODO figure out how to initialize dataframe
-    labeled_dataframe = pd.DataFrame()
+    # create columns for the ground truths
+    annotations.insert(len(annotations), 'MV Truth', [False * len(annotations)])
+    annotations.insert(len(annotations), 'DS Truth', [False * len(annotations)])
+
     
     # train DS on whole dataset to generate labels
     DS_mats = noisy_annotators.EM_Skeene(annotations)
