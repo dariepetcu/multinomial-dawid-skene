@@ -3,40 +3,33 @@ import urllib
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score
-import noisy_annotators
+# import noisy_annotators
 
 
 # 0.005 = 6600 datapoints
 # 0.0001 = 137 datapoints
 def load_data(cleanup=False):
     # read in the data
-    # comments = pd.read_csv('wiki_aggression/aggression_annotated_comments.tsv',  sep = '\t')
+    comments = pd.read_csv('wiki_aggression/aggression_annotations.tsv',  sep = '\t')
+    # select first 1000 rows of comments
     if cleanup:
-        annotations = pd.read_csv('F:/msc/y2/hitl/project/wiki_aggression/aggression_annotations.tsv', sep='\t')
-        # demographics = pd.read_csv('wiki_aggression/aggression_worker_demographics.tsv',  sep = '\t')
-
-        # remove newline and tab tokens
-        # comments['comment'] = comments['comment'].apply(lambda x: x.replace("NEWLINE_TOKEN", " "))
-        # comments['comment'] = comments['comment'].apply(lambda x: x.replace("TAB_TOKEN", " "))
-
         # keep clean subset of available data
-        selected_datapoints = handle_sparsity()      
+        selected_datapoints = handle_sparsity(comments, no_anots=2)      
         # Concatenate selected datapoints to the new DataFrame
         print("Saving datapoints with reviews from all workers...")
-        selected_datapoints.to_csv('non_sparse.csv', index=False)
+        selected_datapoints.to_csv('non_sparse_try1000.csv', index=False)
     else:
         selected_datapoints = pd.read_csv('non_sparse.csv')
 
-    generate_labels(selected_datapoints)
+    # generate_labels(selected_datapoints)
 
     # create test and train splits
-    train, test = train_test_split(selected_datapoints, test_size=0.2, random_state=76)
+    # train, test = train_test_split(selected_datapoints, test_size=0.2, random_state=76)
 
-    return train, test
+    # return train, test
 
 
-def handle_sparsity(no_anots = 7):
-    annotations = pd.read_csv('F:/msc/y2/hitl/project/wiki_aggression/aggression_annotations.tsv', sep='\t')
+def handle_sparsity(annotations, no_anots=7):
     reviews = annotations['rev_id'].unique().tolist()
     all_worker_ids = annotations['worker_id'].unique().tolist()
 
@@ -49,17 +42,21 @@ def handle_sparsity(no_anots = 7):
     # sort annotators by number of reviews submitted
     best_annotators = sorted(reviews_by_annot, key=lambda key: len(reviews_by_annot[key]))
     # start with all reviews annotated by the best annotator. store review ids
-    picked_reviews = set(reviews_by_annot[best_annotators[0]])
+    final_reviews = set()
 
     # keep best 7 annotators
-    picked_annots = best_annotators[:no_anots]
-    for rev in tqdm(picked_reviews):
+    picked_annots = best_annotators[-no_anots:]
+    # print("picked annotators: ", picked_annots)
+    for rev in tqdm(reviews):
+        ok = True
         for annot in picked_annots:
             # remove datapoint if one of top 7 annotators did not annotate it
             if rev not in reviews_by_annot[annot]:
-                picked_reviews.remove(rev)
                 # stop checking current datapoint
+                ok = False
                 break
+        if ok:
+            final_reviews.add(rev)
 
 
     # store worker ids
@@ -82,11 +79,14 @@ def handle_sparsity(no_anots = 7):
     #         picked_annots.remove(annot)
 
     print("finished parsing data, removing reviews from deleted annotators..")
-    # Select datapoints with reviews from remaining worker_ids
-    selected_annotations = annotations[annotations['worker_id'].isin(picked_annots)]
-    dense_reviews = selected_annotations[selected_annotations['rev_id'].isin(picked_reviews)]
 
-    return dense_reviews
+    # Keep subset of dataframe with selected reviews
+    dense_df = annotations[annotations['rev_id'].isin(final_reviews)]
+    dense_df = dense_df[dense_df['worker_id'].isin(picked_annots)]
+
+    print(f"New dataframe contains {len(dense_df)} datapoints")
+
+    return dense_df
 
 
 def generate_labels(annotations):
@@ -94,9 +94,8 @@ def generate_labels(annotations):
     annotators = annotations['worker_id'].unique().tolist()
 
     # create columns for the ground truths
-    annotations.insert(len(annotations), 'MV Truth', [False * len(annotations)])
-    annotations.insert(len(annotations), 'DS Truth', [False * len(annotations)])
-
+    annotations['MV Truth'] = None
+    annotations['DS Truth'] = None
     
     # train DS on whole dataset to generate labels
     DS_mats = noisy_annotators.EM_Skeene(annotations)
@@ -137,7 +136,7 @@ def run_experiment(num_annotators=5, num_iterations=3, demographic_type='all', a
             C_mats = noisy_annotators.EM_dawid_skene(train, num_iterations)
 
 
-
+load_data(cleanup=True)
 
 ##############################################################################################################################
 # comments structure:
