@@ -14,7 +14,7 @@ def load_data(num_datapoints=10000, cleanup=False):
     comments = pd.read_csv('wiki_aggression/aggression_annotations.tsv',  sep = '\t')
     # select first 1000 rows of comments
     
-    filename = f'non_sparse_{num_datapoints}.csv'
+    filename = f'repo/non_sparse_{num_datapoints}.csv'
     if cleanup:
         # keep clean subset of available data
         selected_datapoints = handle_sparsity(comments.head(num_datapoints))
@@ -41,7 +41,7 @@ def handle_sparsity(annotations, no_revs=10):
     final_annotators = set()
 
     # pickled_annot_by_rev = 'good_annots_by_rev.pkl'
-    pickled_rev_by_annot = 'good_rev_by_annot.pkl'
+    pickled_rev_by_annot = 'repo/good_rev_by_annot.pkl'
 
 
     with open(pickled_rev_by_annot, 'rb') as f:
@@ -166,16 +166,17 @@ def run_experiment(num_datapoints=10000, num_iterations=5, algorithm='ds', clean
 
 
 def main():
-    import argparse
-    import sys
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--datapoints", type=int, default=10000)
-    parser.add_argument("--iterations", type=int, default=1)
-    parser.add_argument("--algo", type=str, default='mn')
-    parser.add_argument("--parse_data", action="store_true", default=False)
+    # import argparse
+    # import sys
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("--datapoints", type=int, default=10000)
+    # parser.add_argument("--iterations", type=int, default=1)
+    # parser.add_argument("--algo", type=str, default='mn')
+    # parser.add_argument("--parse_data", action="store_true", default=False)
 
-    args = parser.parse_args()
-    run_experiment(num_datapoints=args.datapoints, num_iterations=args.iterations, algorithm=args.algo, cleanup=args.parse_data)
+    # args = parser.parse_args()
+    run_experiment(num_datapoints=4000, num_iterations=3, algorithm='ds', cleanup=False)
+    run_experiment(num_datapoints=10000, num_iterations=1, algorithm='ds', cleanup=False)
 
 
 
