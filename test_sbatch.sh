@@ -11,6 +11,4 @@
 
 cd $HOME/multinomial-dawid-skene/
 
-conda activate scikit
-
-srun python data_loading.py --datapoints 10000 --iterations 3 --algo mn
+srun python data_loading.py --datapoints 4000 --iterations 1 --algo ds
